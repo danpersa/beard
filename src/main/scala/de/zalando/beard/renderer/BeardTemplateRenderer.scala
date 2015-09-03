@@ -6,7 +6,8 @@ import rx.lang.scala.subjects.ReplaySubject
 
 import scala.Predef
 import scala.collection.immutable._
-
+import scala.concurrent.Future
+import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
  * @author dpersa
@@ -17,16 +18,16 @@ class BeardTemplateRenderer(templateCompiler: TemplateCompiler) {
     val output = ReplaySubject[Observable[String]]()
 
     renderInternal(template, context, output)
-    output.onCompleted()
 
     output.concat
   }
 
   private def renderInternal(template: BeardTemplate,
-                     context: Map[String, Any] = Map.empty,
-                     output: Subject[Observable[String]]): Unit = {
+                             context: Map[String, Any] = Map.empty,
+                             output: Subject[Observable[String]]): Unit = {
 
     template.parts.map(renderStatement(_, context, output))
+    output.onCompleted()
   }
 
   private def onNext(output: Subject[Observable[String]], string: String) = {
@@ -40,11 +41,16 @@ class BeardTemplateRenderer(templateCompiler: TemplateCompiler) {
         onNext(output, ContextResolver.resolve(identifier, context).toString())
       }
       case RenderStatement(template, localValues) =>
+
         val localContext = localValues.map {
           case attrWithId: AttributeWithIdentifier => attrWithId.key -> ContextResolver.resolve(attrWithId.id, context)
           case attrWitValue: AttributeWithValue => attrWitValue.key -> attrWitValue.value
         }.toMap
-        renderInternal(templateCompiler.compile(TemplateName(template)).get, localContext, output)
+        val renderOutput = ReplaySubject[Observable[String]]()
+        output.onNext(renderOutput.concat)
+        Future {
+          renderInternal(templateCompiler.compile(TemplateName(template)).get, localContext, renderOutput)
+        }
       case ForStatement(iterator, collection, statements) => {
         val seqFromContext: Seq[Any] = ContextResolver.resolveSeq(collection, context)
 

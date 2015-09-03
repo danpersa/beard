@@ -33,8 +33,9 @@ class BeardPerformanceTest extends FunSpec with Matchers {
       }
 
       val r = renderer.render(template, context)
-      r.subscribe(print(_))
+//      r.subscribe(print(_))
 
+      r.toBlocking.foreach(print)
       println(s"result")
     }
   }
